@@ -1,6 +1,7 @@
 package com.zmm.kv.lsm;
 
 import com.zmm.kv.api.DBIterator;
+import com.zmm.kv.entry.Entry;
 
 /**
  * @author zmm
@@ -8,7 +9,7 @@ import com.zmm.kv.api.DBIterator;
  */
 public abstract class MemTable {
 
-    public boolean put(byte[] key, byte[] val) {
+    public boolean put(Entry entry) {
         return false;
     }
 
@@ -18,6 +19,10 @@ public abstract class MemTable {
 
     public boolean del(byte[] key)  {
         return false;
+    }
+
+    public int size() {
+        return 0;
     }
 
     public DBIterator iterator() {
