@@ -1,7 +1,8 @@
 package com.zmm.kv.lsm;
 
+import com.google.protobuf.ByteString;
 import com.zmm.kv.api.DBIterator;
-import com.zmm.kv.entry.Entry;
+import com.zmm.kv.pb.Entry;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -33,8 +34,9 @@ public class SkipList extends MemTable{
      * @return                  true / false
      */
     private boolean put(Entry entry, int type) {
+        byte[] key = entry.getKey().toByteArray();
         // 计算score
-        float score = calcScore(entry.getKey());
+        float score = calcScore(key);
         // 前继节点
         Node[] preNode = new Node[level];
         // 找插入的位置
@@ -51,13 +53,13 @@ public class SkipList extends MemTable{
             while (next != null) {
 
                 // 与当前key进行比较
-                int flag = compare(score, entry.getKey(), next);
+                int flag = compare(score, key, next);
                 if (flag == -1) {
                     // 下一层
                     break;
                 } else if (flag == 0) {
                     // 相同，直接修改并返回
-                    size += entry.size() - next.entry.size();
+                    size += entry.toByteArray().length - next.entry.toByteArray().length;
                     next.entry = entry;
                     return true;
                 }
@@ -106,7 +108,7 @@ public class SkipList extends MemTable{
             while (next != null) {
                 int flag = compare(score, key, next);
                 if (flag == 0) {
-                    return next.getEntry().getValue();
+                    return next.getEntry().getValue().toByteArray();
                 } else if (flag == -1){
                     break;
                 }
@@ -119,7 +121,10 @@ public class SkipList extends MemTable{
 
     @Override
     public boolean del(byte[] key) {
-        return put(new Entry(key, "".getBytes()), 1);
+        return put(Entry.newBuilder()
+                        .setKey(ByteString.copyFrom(key))
+                        .setValue(ByteString.copyFrom("".getBytes()))
+                        .build(), 1);
     }
 
     @Override
@@ -173,7 +178,7 @@ public class SkipList extends MemTable{
      */
     private int compare(float score, byte[] key, Node node) {
         if (score == node.score) {
-            byte[] nodeKey = node.entry.getKey();
+            byte[] nodeKey = node.entry.getKey().toByteArray();
             for (int i = 0; i < key.length && i < nodeKey.length; i++) {
                 if (key[i] > nodeKey[i]) {
                     return 1;
@@ -222,16 +227,20 @@ public class SkipList extends MemTable{
 
         @Override
         public boolean hasNext() {
-            return node != null && node.levels.get(0) != null;
+            if (node == null) return false;
+            Node index = node;
+            do {
+                index = index.levels.get(0);
+            } while (index != null && index.entry.getValue().size() == 0);
+            return index != null && index.entry.getValue().size() != 0;
         }
 
         @Override
         public Entry next() {
-            if (node != null) {
-                node = node.levels.get(0);
-                return node.entry;
-            }
-            return null;
+
+            if (node == null) return null;
+            while ((node = node.levels.get(0)).entry.getValue().size() == 0) {}
+            return node.entry;
         }
 
         @Override

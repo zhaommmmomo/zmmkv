@@ -1,7 +1,8 @@
 package com.zmm.kv.lsm;
 
 import com.zmm.kv.api.DBIterator;
-import com.zmm.kv.entry.Entry;
+import com.zmm.kv.api.Option;
+import com.zmm.kv.pb.Entry;
 
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -30,15 +31,11 @@ public class LSM {
 
     public boolean put(Entry entry) {
 
-        // TODO: 2022/2/18 写wal文件
-
         // 判断是否需要将可变内存表变为不可变内存表
         if (menTable.size() > option.getMemSize()) {
             immutables.add(menTable);
             menTable = new SkipList();
         }
-
-        // TODO: 2022/2/18 大value分离
 
         return menTable.put(entry);
     }
@@ -60,7 +57,7 @@ public class LSM {
     }
 
     public boolean del(byte[] key)  {
-        return false;
+        return menTable.del(key);
     }
 
     public DBIterator iterator() {

@@ -3,14 +3,18 @@ syntax = "proto3";
 option java_multiple_files = true;
 option java_package = "com.zmm.kv.pb";
 
-//定义消息类型
-message VoteRequest {
-  // candidate任期
-  int64 term = 1;
-  // candidateId
-  int64 candidateId = 2;
-  // candidate最后日志条目的索引
-  int64 lastLogIndex = 3;
-  // candidate最后日志条目的任期号
-  int64 lastLogTerm = 4;
+message Index {
+  bytes bloomFilter = 1;
+}
+
+message Block {
+  bytes baseKey = 1;
+  int32 offset = 2;
+  int32 len = 3;
+  repeated Entry data = 4;
+}
+
+message Entry {
+  bytes key = 1;
+  bytes value = 2;
 }

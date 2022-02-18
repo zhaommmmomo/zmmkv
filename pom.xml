@@ -7,12 +7,21 @@
     <groupId>com.zmm</groupId>
     <artifactId>zmmkv</artifactId>
     <version>1.0</version>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.google.protobuf</groupId>
+            <artifactId>protobuf-java</artifactId>
+            <version>3.19.3</version>
+        </dependency>
+    </dependencies>
+
     <build>
         <extensions>
             <extension>
                 <groupId>kr.motd.maven</groupId>
                 <artifactId>os-maven-plugin</artifactId>
-                <version>1.5.0.Final</version>
+                <version>1.6.2</version>
             </extension>
         </extensions>
         <plugins>
@@ -27,14 +36,12 @@
             <plugin>
                 <groupId>org.xolstice.maven.plugins</groupId>
                 <artifactId>protobuf-maven-plugin</artifactId>
-                <version>0.5.0</version>
+                <version>0.6.1</version>
                 <configuration>
                     <protocArtifact>com.google.protobuf:protoc:3.6.1:exe:${os.detected.classifier}</protocArtifact>
                     <pluginId>protoc-java</pluginId>
                     <!--读取proto文件路径-->
                     <protoSourceRoot>${project.basedir}/src/main/proto</protoSourceRoot>
-                    <!--生产的java文件路径-->
-                    <outputDirectory>${project.basedir}/src/main/java/com/zmm/kv/pb</outputDirectory>
                 </configuration>
                 <executions>
                     <execution>

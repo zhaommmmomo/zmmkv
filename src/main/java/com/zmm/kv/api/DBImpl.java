@@ -1,8 +1,8 @@
 package com.zmm.kv.api;
 
-import com.zmm.kv.entry.Entry;
+import com.google.protobuf.ByteString;
 import com.zmm.kv.lsm.LSM;
-import com.zmm.kv.lsm.Option;
+import com.zmm.kv.pb.Entry;
 
 /**
  * @author zmm
@@ -17,7 +17,12 @@ public class DBImpl implements DB{
     }
 
     public boolean put(byte[] key, byte[] value) {
-        return lsm.put(new Entry(key, value));
+
+        // TODO: 2022/2/18 大value分离。 4kb以上的进行分离
+        return lsm.put(Entry.newBuilder()
+                            .setKey(ByteString.copyFrom(key))
+                            .setValue(ByteString.copyFrom(value))
+                            .build());
     }
 
     public byte[] get(byte[] key) {

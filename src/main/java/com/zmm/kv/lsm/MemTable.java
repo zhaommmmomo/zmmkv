@@ -1,7 +1,7 @@
 package com.zmm.kv.lsm;
 
 import com.zmm.kv.api.DBIterator;
-import com.zmm.kv.entry.Entry;
+import com.zmm.kv.pb.Entry;
 
 /**
  * @author zmm

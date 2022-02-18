@@ -1,6 +1,6 @@
 package com.zmm.kv.api;
 
-import com.zmm.kv.entry.Entry;
+import com.zmm.kv.pb.Entry;
 
 /**
  * @author zmm
