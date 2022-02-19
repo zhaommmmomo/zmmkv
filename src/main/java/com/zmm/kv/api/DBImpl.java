@@ -45,8 +45,10 @@ public class DBImpl implements DB{
         List<File> wals = new ArrayList<>();
         if (file.exists()) {
             // 加载wal文件
+            String name;
             for (File f : Objects.requireNonNull(file.listFiles())) {
-                if (f.getName().endsWith("wal")) {
+                name = f.getName();
+                if (name.endsWith("wal")) {
                     wals.add(f);
                 }
             }
@@ -71,6 +73,8 @@ public class DBImpl implements DB{
             for (File walFile : wals) {
 
                 fc = new RandomAccessFile(walFile, "rw").getChannel();
+                // 如果是空wal文件
+                if (fc.size() == 0) break;
                 ByteBuffer buf;
                 int end;
                 int keyLen = 0;
@@ -113,8 +117,6 @@ public class DBImpl implements DB{
 
     public boolean put(byte[] key, byte[] value) {
 
-        // TODO: 2022/2/18 大value分离。 4kb以上的进行分离
-
         // 写wal文件
         wal.append(key, value);
 
@@ -129,8 +131,6 @@ public class DBImpl implements DB{
     }
 
     public boolean del(byte[] key) {
-
-        // TODO: 2022/2/19 将valueLog中对应的数据设置为无效
 
         // 写wal
         wal.append(key);

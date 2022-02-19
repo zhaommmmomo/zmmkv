@@ -5,16 +5,29 @@ option java_package = "com.zmm.kv.pb";
 
 message Index {
   bytes bloomFilter = 1;
+  /**
+   * 最大最小key，稀疏索引，
+   * 可以用来与bloom一起判断key是否存在
+   * 或者在merge时合并区间
+   */
+  bytes minKey = 2;
+  bytes maxKey = 3;
 }
 
 message Block {
+  /** 用于在指定的sst中二分 */
   bytes baseKey = 1;
   int32 offset = 2;
   int32 len = 3;
-  repeated Entry data = 4;
+  repeated Entry entry = 4;
 }
 
 message Entry {
   bytes key = 1;
   bytes value = 2;
+  uint32 fileNum = 3;
+  uint32 offset = 4;
+  /** Blog大小 */
+  uint32 size = 5;
 }
+

@@ -3,11 +3,10 @@ package com.zmm.kv.lsm;
 import com.zmm.kv.api.DBIterator;
 import com.zmm.kv.api.Option;
 import com.zmm.kv.pb.Entry;
+import com.zmm.kv.worker.Flusher;
 
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /**
  * @author zmm
@@ -18,16 +17,18 @@ public class LSM {
     /** 可变内存表 */
     private MemTable menTable;
     /** 不可变内存表 */
-    private List<MemTable> immutables;
+    private final List<MemTable> immutables;
     private final Option option;
+    private LevelManager levelManager;
+
+    private final Flusher flusher;
 
     public LSM(Option option) {
         this.option = option;
         menTable = new SkipList();
         immutables = new CopyOnWriteArrayList<>();
-
-        ExecutorService executor = Executors.newSingleThreadExecutor();
-
+        levelManager = new LevelManager(option);
+        flusher = new Flusher(option, levelManager);
     }
 
     public boolean put(Entry entry) {
@@ -36,6 +37,9 @@ public class LSM {
         if (menTable.size() > option.getMemSize()) {
             immutables.add(menTable);
             menTable = new SkipList();
+
+            // 触发flush操作
+            flusher.flush(immutables);
         }
 
         return menTable.put(entry);

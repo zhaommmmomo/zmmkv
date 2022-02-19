@@ -8,18 +8,20 @@ package com.zmm.kv.api;
  *              (L4) 1024 * 1024 * 600
  *              (L5) 1024 * 1024 * 1024
  * block:       1024 * 4
- * memTable:    1024 * 4
+ * memTable:    1024 * 1024 * 16
  * wal:         1024 * 1024 * 16
+ * valueSize:   1024 * 4
  * @author zmm
  * @date 2022/2/18 13:06
  */
 public class Option {
 
-    private int memSize = 1024 * 4;
+    private int memSize = 1024 * 1024 * 16;
     private String dir;
     private final int walSize = 1024 * 1024 * 16;
     private int blockSize = 1024 * 4;
     private int sstSize = 1024 * 1024 * 1024;
+    private int valueSize = 1024 * 4;
 
     public Option() {
         dir = System.getProperty("user.dir") + "\\db";
@@ -44,5 +46,8 @@ public class Option {
     }
     public int getWalSize() {
         return walSize;
+    }
+    public int getValueSize() {
+        return valueSize;
     }
 }

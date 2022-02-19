@@ -18,7 +18,7 @@ public class Wal {
     private int fileNum = 0;
     private int size = 0;
     private FileChannel fc;
-    private Option option;
+    private final Option option;
 
     public Wal(Option option) {
         this.option = option;
@@ -84,7 +84,8 @@ public class Wal {
 
     public static void main(String[] args) throws Exception {
         Wal wal = new Wal(new Option());
-        wal.append("aaaaaa".getBytes(), "aaaaaa".getBytes());
+        wal.append("1".getBytes(), "1".getBytes());
+        wal.append("2".getBytes(), "2".getBytes());
         //Option option = new Option();
         //FileChannel ff = new RandomAccessFile(new File(option.getDir() + "\\" + 1 + ".wal"), "rw").getChannel();
         //ByteBuffer buf = ByteBuffer.allocate(20);
