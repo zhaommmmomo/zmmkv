@@ -1,8 +1,8 @@
 package com.zmm.kv.worker;
 
 import com.zmm.kv.lsm.MemTable;
-
-import java.util.List;
+import java.util.Queue;
+import java.util.concurrent.LinkedBlockingQueue;
 
 /**
  * @author zmm
@@ -10,14 +10,11 @@ import java.util.List;
  */
 public class Flusher implements Runnable{
 
-    private List<MemTable> task;
-
-    public Flusher(List<MemTable> task) {
-        this.task = task;
-    }
+    private static Queue<MemTable> task = new LinkedBlockingQueue<>();
 
     @Override
     public void run() {
 
     }
+
 }
