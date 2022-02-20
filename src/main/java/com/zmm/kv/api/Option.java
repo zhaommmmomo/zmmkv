@@ -18,7 +18,6 @@ public class Option {
 
     private final int memSize = 1024 * 1024 * 8;
     private String dir;
-    private final int walSize = 1024 * 1024 * 16;
     private final int blockSize = 1024 * 4;
     private final int[] sstSize = new int[]{1024 * 1024 * 10,
                                             1024 * 1024 * 40,
@@ -48,9 +47,6 @@ public class Option {
     }
     public int getSstSize(int level) {
         return sstSize[level];
-    }
-    public int getWalSize() {
-        return walSize;
     }
     public int getValueSize() {
         return valueSize;

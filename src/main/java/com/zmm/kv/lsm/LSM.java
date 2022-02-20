@@ -2,6 +2,7 @@ package com.zmm.kv.lsm;
 
 import com.zmm.kv.api.DBIterator;
 import com.zmm.kv.api.Option;
+import com.zmm.kv.file.Wal;
 import com.zmm.kv.pb.Entry;
 import com.zmm.kv.worker.Flusher;
 
@@ -37,6 +38,9 @@ public class LSM {
         if (menTable.size() > option.getMemSize()) {
             immutables.add(menTable);
             menTable = new SkipList();
+
+            // 创建新的wal文件
+            Wal.newWalFile(option.getDir());
 
             // 触发flush操作
             flusher.flush(immutables);

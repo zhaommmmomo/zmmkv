@@ -1,17 +1,12 @@
 package com.zmm.kv.worker;
 
-import com.zmm.kv.api.DBIterator;
 import com.zmm.kv.api.Option;
 import com.zmm.kv.file.SSTable;
+import com.zmm.kv.file.Wal;
 import com.zmm.kv.lsm.LevelManager;
 import com.zmm.kv.lsm.MemTable;
-import com.zmm.kv.pb.Entry;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.RandomAccessFile;
 import java.nio.MappedByteBuffer;
-import java.nio.channels.FileChannel;
 import java.util.List;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
@@ -30,8 +25,6 @@ public class Flusher implements Runnable{
     private final LevelManager levelManager;
     private final Option option;
     private List<MemTable> task;
-
-    private MappedByteBuffer mb;
 
     public Flusher(Option option, LevelManager levelManager){
         lock = new ReentrantLock();
@@ -75,11 +68,25 @@ public class Flusher implements Runnable{
     }
 
     private void doFlush() {
-        for (MemTable memTable : task) {
-            // 构建sst
-            SSTable ssTable = SSTable.build(memTable, option);
 
-            // TODO: 2022/2/20 将对应的内存表删除
+        while (task.size() > 0) {
+
+            // 构建sst
+            SSTable ssTable = SSTable.build(task.get(0), option);
+
+            if (ssTable == null) {
+                // 说明该memTable中没有有效元素
+                task.remove(0);
+                continue;
+            }
+
+            // 将新构建的sst放入level层级中
+            if (levelManager.changeLevels(ssTable)) {
+                // 将对应的内存表删除
+                task.remove(0);
+            } else {
+                ssTable.remove(option.getDir());
+            }
         }
     }
 

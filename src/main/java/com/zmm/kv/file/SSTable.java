@@ -96,8 +96,6 @@ public class SSTable {
                 size += entry.getSerializedSize();
             }
 
-
-
             // 判断最后一个block是否写入
             if (builder.getBaseKey().size() != 0) {
                 fill(builder, mb);
@@ -113,6 +111,7 @@ public class SSTable {
             mb.put(indexs);
 
             // write header
+            // size
             count = 4 * 1024 * count + 8;
             byte[] bytes = new byte[4];
             bytes[3] = (byte) ((count & 255) - 128);
@@ -121,16 +120,15 @@ public class SSTable {
             bytes[0] = (byte) (((count >> 24) & 255) - 128);
             mb.put(bytes);
 
+            // indexLen
             bytes = new byte[3];
             bytes[2] = (byte) ((indexs.length & 255) - 128);
             bytes[1] = (byte) (((indexs.length >> 8) & 255) - 128);
             bytes[0] = (byte) (((indexs.length >> 16) & 255) - 128);
             mb.put(bytes);
 
+            // type
             mb.put((byte) 1);
-
-
-            // TODO: 2022/2/20 将新构建的sst放入level层级中
 
             return ssTable;
         } catch (IOException e) {
@@ -164,7 +162,7 @@ public class SSTable {
 
         //
         // type: 类型             1字节
-        // indexLen: 索引长度
+        // indexLen: 索引长度      3byte
         // size: 整个sst的字节     4字节 可以表示1G多点的sst文件
     }
 
@@ -186,5 +184,13 @@ public class SSTable {
 
     public int level() {
         return level;
+    }
+
+    /**
+     * 将该sst文件删除
+     * @param dir               sst文件目录
+     */
+    public void remove(String dir) {
+        new File(dir + "\\" + getFileName()).delete();
     }
 }

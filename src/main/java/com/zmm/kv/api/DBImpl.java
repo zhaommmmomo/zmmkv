@@ -57,8 +57,11 @@ public class DBImpl implements DB{
         // 初始化wal
         if (wals.size() != 0) {
             recovery(wals);
-            String name = wals.get(wals.size() - 1).getName();
-            wal = new Wal(option, Integer.parseInt(name.substring(0, name.length() - 4)));
+            String preFid = wals.get(0).getName();
+            String lastFid = wals.get(wals.size() - 1).getName();
+            wal = new Wal(option,
+                    Integer.parseInt(preFid.substring(0, preFid.length() - 4)),
+                    Integer.parseInt(lastFid.substring(0, lastFid.length() - 4)));
         } else {
             wal = new Wal(option);
         }

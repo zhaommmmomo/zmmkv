@@ -29,3 +29,10 @@ message Entry {
   uint32 size = 5;
 }
 
+message Levels {
+  repeated Level levels = 1;
+}
+
+message Level {
+  repeated string level = 1;
+}

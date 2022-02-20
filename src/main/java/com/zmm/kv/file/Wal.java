@@ -15,20 +15,21 @@ import java.nio.channels.FileChannel;
  */
 public class Wal {
 
-    private int fileNum = 0;
-    private int size = 0;
-    private FileChannel fc;
+    private static int preNum = 0;
+    private static int newNum = 0;
+    private static FileChannel fc;
     private final Option option;
 
     public Wal(Option option) {
         this.option = option;
-        newWalFile();
+        newWalFile(option.getDir());
     }
 
-    public Wal(Option option, int num) {
+    public Wal(Option option, int _preNum, int _lastNum) {
         this.option = option;
-        this.fileNum = num;
-        newWalFile();
+        preNum = _preNum;
+        newNum = _lastNum;
+        newWalFile(option.getDir());
     }
 
     public void append(byte[] key) {
@@ -36,12 +37,6 @@ public class Wal {
     }
 
     public void append(byte[] key, byte[] value) {
-
-        if (size > option.getWalSize()) {
-            // 如果wal的size到达了最大值
-            // 创建新的wal文件
-            newWalFile();
-        }
 
         int len = 4 + key.length + (value == null ? 0 :value.length);
         byte[] bytes = new byte[len];
@@ -61,39 +56,28 @@ public class Wal {
         try {
             // 写入wal中
             fc.write(ByteBuffer.wrap(bytes));
-            size += len;
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    private void newWalFile() {
-        size = 0;
+    public static void newWalFile(String dir) {
         try {
-            fc = new RandomAccessFile(new File(option.getDir() + "\\" + incFileNum() + ".wal"), "rw").getChannel();
+            fc = new RandomAccessFile(new File(dir + "\\" + (++newNum) + ".wal"), "rw").getChannel();
         } catch (FileNotFoundException e) {
             e.printStackTrace();
         }
-    }
 
-    private int incFileNum() {
-        ++fileNum;
-        fileNum = fileNum == Integer.MAX_VALUE ? 1 : fileNum;
-        return fileNum;
-    }
-
-    public static void main(String[] args) throws Exception {
-        Wal wal = new Wal(new Option());
-        wal.append("1".getBytes(), "1".getBytes());
-        wal.append("2".getBytes(), "2".getBytes());
-        //Option option = new Option();
-        //FileChannel ff = new RandomAccessFile(new File(option.getDir() + "\\" + 1 + ".wal"), "rw").getChannel();
-        //ByteBuffer buf = ByteBuffer.allocate(20);
-        //ff.read(buf);
-        //byte[] bytes = buf.array();
-        //for (byte b : bytes) {
-        //    System.out.print(b + " ");
+        //if (newNum - preNum > 100) {
+        //    // 如果wal文件超过100个，清理最前面的一个
+        //    delPreWal(dir);
         //}
+    }
 
+    public static void delPreWal(String dir, int count) {
+        while (count > 0) {
+            new File(dir + "\\" + (preNum++) + ".wal").delete();
+            count--;
+        }
     }
 }
