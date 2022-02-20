@@ -72,11 +72,7 @@ public class BloomFilter {
         return h % size;
     }
 
-    public static void main(String[] args) {
-        BloomFilter filter = new BloomFilter(10, 0.8f);
-        filter.appendKey("a".getBytes());
-        filter.appendKey("b".getBytes());
-        System.out.println(filter.containKey("a".getBytes()));
-        System.out.println(filter.containKey("c".getBytes()));
+    public byte[] toByteArray() {
+        return filter;
     }
 }
