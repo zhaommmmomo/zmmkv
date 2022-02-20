@@ -7,6 +7,11 @@ import com.zmm.kv.lsm.LevelManager;
 import com.zmm.kv.lsm.MemTable;
 import com.zmm.kv.pb.Entry;
 
+import java.io.File;
+import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
 import java.util.List;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
@@ -26,12 +31,16 @@ public class Flusher implements Runnable{
     private final Option option;
     private List<MemTable> task;
 
+    private MappedByteBuffer mb;
+
     public Flusher(Option option, LevelManager levelManager){
         lock = new ReentrantLock();
         condition = lock.newCondition();
         this.option = option;
         this.levelManager = levelManager;
-        new Thread(this).start();
+        Thread thread = new Thread(this, "flusher");
+        thread.setDaemon(true);
+        thread.start();
     }
 
     @Override
@@ -66,27 +75,11 @@ public class Flusher implements Runnable{
     }
 
     private void doFlush() {
-        // TODO: 2022/2/18 大value分离
-
-        DBIterator iterator;
-        Entry entry;
         for (MemTable memTable : task) {
-            iterator = memTable.iterator();
-            while (iterator.hasNext()) {
-                entry = iterator.next();
-                // 判断是否需要进行kv分离
-                if (entry.getValue().size() > option.getValueSize()) {
-                    // 进行kv分离
-                }
-            }
-
             // 构建sst
-            //SSTable ssTable = levelManager.buildSSTable(memTable);
-            SSTable ssTable = SSTable.build(memTable);
+            SSTable ssTable = SSTable.build(memTable, option);
 
-
-
-            //
+            // TODO: 2022/2/20 将对应的内存表删除
         }
     }
 

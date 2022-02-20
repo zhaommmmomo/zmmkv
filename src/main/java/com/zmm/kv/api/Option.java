@@ -1,8 +1,8 @@
 package com.zmm.kv.api;
 
 /**
- * sst:         (L0) 1024 * 1024 * 8
- *              (L1) 1024 * 1024 * 10
+ * sst:         (L0) 1024 * 1024 * 16
+ *              (L1) 1024 * 1024 * 40
  *              (L2) 1024 * 1024 * 100
  *              (L3) 1024 * 1024 * 300
  *              (L4) 1024 * 1024 * 600
@@ -16,12 +16,17 @@ package com.zmm.kv.api;
  */
 public class Option {
 
-    private int memSize = 1024 * 1024 * 16;
+    private final int memSize = 1024 * 1024 * 8;
     private String dir;
     private final int walSize = 1024 * 1024 * 16;
-    private int blockSize = 1024 * 4;
-    private int sstSize = 1024 * 1024 * 1024;
-    private int valueSize = 1024 * 4;
+    private final int blockSize = 1024 * 4;
+    private final int[] sstSize = new int[]{1024 * 1024 * 10,
+                                            1024 * 1024 * 40,
+                                            1024 * 1024 * 100,
+                                            1024 * 1024 * 300,
+                                            1024 * 1024 * 600,
+                                            1024 * 1024 * 1024};
+    private final int valueSize = blockSize;
 
     public Option() {
         dir = System.getProperty("user.dir") + "\\db";
@@ -41,8 +46,8 @@ public class Option {
     public int getBlockSize() {
         return blockSize;
     }
-    public int getSstSize() {
-        return sstSize;
+    public int getSstSize(int level) {
+        return sstSize[level];
     }
     public int getWalSize() {
         return walSize;

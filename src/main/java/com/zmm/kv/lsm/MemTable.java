@@ -25,6 +25,10 @@ public abstract class MemTable {
         return 0;
     }
 
+    public int len() {
+        return 0;
+    }
+
     public DBIterator iterator() {
         return null;
     }

@@ -25,6 +25,7 @@ public class SkipList extends MemTable{
 
     @Override
     public boolean put(Entry entry) {
+        length++;
         return put(entry, 0);
     }
 
@@ -122,6 +123,8 @@ public class SkipList extends MemTable{
 
     @Override
     public boolean del(byte[] key) {
+        if (length == 0) return  false;
+        length--;
         return put(Entry.newBuilder()
                         .setKey(ByteString.copyFrom(key))
                         .setValue(ByteString.copyFrom("".getBytes()))
@@ -131,6 +134,11 @@ public class SkipList extends MemTable{
     @Override
     public int size() {
         return size;
+    }
+
+    @Override
+    public int len() {
+        return length;
     }
 
     @Override
