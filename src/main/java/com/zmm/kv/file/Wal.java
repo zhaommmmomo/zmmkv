@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.util.concurrent.TimeUnit;
 
 /**
  * @author zmm
@@ -22,14 +23,12 @@ public class Wal {
 
     public Wal(Option option) {
         this.option = option;
-        newWalFile(option.getDir());
     }
 
     public Wal(Option option, int _preNum, int _lastNum) {
         this.option = option;
         preNum = _preNum;
         newNum = _lastNum;
-        newWalFile(option.getDir());
     }
 
     public void append(byte[] key) {
@@ -37,6 +36,8 @@ public class Wal {
     }
 
     public void append(byte[] key, byte[] value) {
+
+        if (fc == null) newWalFile(option.getDir());
 
         int len = 4 + key.length + (value == null ? 0 :value.length);
         byte[] bytes = new byte[len];
@@ -63,8 +64,11 @@ public class Wal {
 
     public static void newWalFile(String dir) {
         try {
+            if (fc != null) {
+                fc.close();
+            }
             fc = new RandomAccessFile(new File(dir + "\\" + (++newNum) + ".wal"), "rw").getChannel();
-        } catch (FileNotFoundException e) {
+        } catch (IOException e) {
             e.printStackTrace();
         }
 
@@ -76,7 +80,7 @@ public class Wal {
 
     public static void delPreWal(String dir, int count) {
         while (count > 0) {
-            new File(dir + "\\" + (preNum++) + ".wal").delete();
+            new File(dir + "\\" + (++preNum) + ".wal").delete();
             count--;
         }
     }

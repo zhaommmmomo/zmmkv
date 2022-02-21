@@ -6,7 +6,6 @@ import com.zmm.kv.file.SSTable;
 
 import java.io.File;
 import java.util.List;
-import java.util.logging.Level;
 
 /**
  * @author zmm
@@ -28,20 +27,14 @@ public class LevelManager {
     private void init() {
 
         manifest.loadManifest(option.getDir());
-
-        File manifestFile = new File(option.getDir() + "\\MANIFEST");
-        if (manifestFile.exists()) {
-
-        }
     }
 
     public byte[] get(byte[] key) {
         // 在Cache中找
         byte[] res = cache.get(key);
-        if (res == null) {
-            // TODO: 2022/2/20 如果在Cache中没找到，去磁盘中找
 
-        }
+        res = res != null ? res : manifest.get(key);
+
         return res;
     }
 

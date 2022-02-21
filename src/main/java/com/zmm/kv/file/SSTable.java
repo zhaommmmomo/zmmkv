@@ -8,10 +8,12 @@ import com.zmm.kv.lsm.MemTable;
 import com.zmm.kv.pb.Block;
 import com.zmm.kv.pb.Entry;
 import com.zmm.kv.pb.Index;
+import com.zmm.kv.util.Utils;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.Arrays;
@@ -52,7 +54,7 @@ public class SSTable {
             Entry entry;
             BloomFilter bloomFilter = new BloomFilter(mLen, 0.01f);
             byte[] minKey = null;
-            byte[] maxKey = null;
+            byte[] key = null;
             int size = 0;
             int count = 0;
             Block.Builder builder = Block.newBuilder();
@@ -63,8 +65,10 @@ public class SSTable {
                     // 进行kv分离
                 }
 
+                key = entry.getKey().toByteArray();
+
                 // 添加到bloom
-                bloomFilter.appendKey(entry.getKey().toByteArray());
+                bloomFilter.appendKey(key);
 
                 // 如果当前block剩下的容量不足以放这个key
                 // 预留2个字节来表示填充位的len
@@ -75,25 +79,18 @@ public class SSTable {
                     size = 0;
                 }
 
-                ByteString key = entry.getKey();
                 // 如果这个block是新开的
                 if (size == 0) {
-                    builder.setBaseKey(key);
-                    if (minKey == null) {
-                        // 判断这个block是不是第一个block
-                        minKey = key.toByteArray();
-                    }
+                    builder.setBaseKey(entry.getKey());
                     size += builder.build().getSerializedSize();
-                }
-
-                if (maxKey == null) {
-                    maxKey = key.toByteArray();
                 }
 
                 // 将entry添加到block中
                 builder.addEntry(entry);
 
                 size += entry.getSerializedSize();
+
+                if (minKey == null) minKey = key;
             }
 
             // 判断最后一个block是否写入
@@ -105,30 +102,35 @@ public class SSTable {
             // write index
             byte[] indexs = Index.newBuilder()
                                 .setBloomFilter(ByteString.copyFrom(bloomFilter.toByteArray()))
-                                .setMaxKey(ByteString.copyFrom(maxKey))
-                                .setMinKey(ByteString.copyFrom(minKey))
+                                .setMaxKey(Utils.calcScore(key))
+                                .setMinKey(Utils.calcScore(minKey))
                                 .build().toByteArray();
             mb.put(indexs);
 
+            // 填充
+            int fillLen = mb.capacity() - mb.position() - 8;
+            if (fillLen > 0) {
+                mb.put(new byte[fillLen]);
+            }
+
+            count = 4 * 1024 * count;
+            byte[] bytes = new byte[8];
             // write header
-            // size
-            count = 4 * 1024 * count + 8;
-            byte[] bytes = new byte[4];
-            bytes[3] = (byte) ((count & 255) - 128);
-            bytes[2] = (byte) (((count >> 8) & 255) - 128);
-            bytes[1] = (byte) (((count >> 16) & 255) - 128);
+            // dataSize
             bytes[0] = (byte) (((count >> 24) & 255) - 128);
-            mb.put(bytes);
+            bytes[1] = (byte) (((count >> 16) & 255) - 128);
+            bytes[2] = (byte) (((count >> 8) & 255) - 128);
+            bytes[3] = (byte) ((count & 255) - 128);
 
             // indexLen
-            bytes = new byte[3];
-            bytes[2] = (byte) ((indexs.length & 255) - 128);
-            bytes[1] = (byte) (((indexs.length >> 8) & 255) - 128);
-            bytes[0] = (byte) (((indexs.length >> 16) & 255) - 128);
-            mb.put(bytes);
+            bytes[4] = (byte) (((indexs.length >> 16) & 255) - 128);
+            bytes[5] = (byte) (((indexs.length >> 8) & 255) - 128);
+            bytes[6] = (byte) ((indexs.length & 255) - 128);
 
             // type
-            mb.put((byte) 1);
+            //bytes[7] = 1;
+
+            mb.put(bytes);
 
             return ssTable;
         } catch (IOException e) {
@@ -147,27 +149,36 @@ public class SSTable {
         return null;
     }
 
+    /**
+     * 会在4kb中预留2b来表示fillLen
+     */
     private static void fill(Block.Builder builder, MappedByteBuffer mb) {
         byte[] bytes = builder.build().toByteArray();
         mb.put(bytes);
         bytes = new byte[4096 - bytes.length];
         int l = bytes.length - 2;
         Arrays.fill(bytes, (byte) 0);
-        bytes[l] = (byte) ((l & 255) - 128);
+        bytes[l] = (byte) (((l >> 8) & 255) - 128);
         bytes[l + 1] = (byte) ((l & 255) - 128);
         mb.put(bytes);
     }
 
-    private void buildHeader() {
-
-        //
-        // type: 类型             1字节
-        // indexLen: 索引长度      3byte
-        // size: 整个sst的字节     4字节 可以表示1G多点的sst文件
-    }
-
     public static void setFileNum(int _fileNum) {
         fileNum = new AtomicInteger(_fileNum);
+    }
+
+    public static Block readBlock(FileChannel fc, int position) {
+        try {
+            byte[] buf = new byte[4096];
+            fc.read(ByteBuffer.wrap(buf), position);
+            // 获取填充字段的长度
+            int fillLen = ((buf[buf.length - 2] + 128) << 8) +
+                            buf[buf.length - 1] + 128;
+            return Block.parseFrom(
+                    ByteString.copyFrom(buf, 0, buf.length - fillLen - 2));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private void setFid() {

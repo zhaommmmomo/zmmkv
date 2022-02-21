@@ -1,10 +1,12 @@
 package com.zmm.kv.worker;
 
+import com.zmm.kv.api.DBIterator;
 import com.zmm.kv.api.Option;
 import com.zmm.kv.file.SSTable;
 import com.zmm.kv.file.Wal;
 import com.zmm.kv.lsm.LevelManager;
 import com.zmm.kv.lsm.MemTable;
+import com.zmm.kv.pb.Entry;
 
 import java.nio.MappedByteBuffer;
 import java.util.List;
@@ -32,7 +34,7 @@ public class Flusher implements Runnable{
         this.option = option;
         this.levelManager = levelManager;
         Thread thread = new Thread(this, "flusher");
-        thread.setDaemon(true);
+        //thread.setDaemon(true);
         thread.start();
     }
 
@@ -70,7 +72,6 @@ public class Flusher implements Runnable{
     private void doFlush() {
 
         while (task.size() > 0) {
-
             // 构建sst
             SSTable ssTable = SSTable.build(task.get(0), option);
 

@@ -20,10 +20,8 @@ public class BloomFilter {
         size = (int) - (count * Math.log(p) / Math.pow(Math.log(2), 2));
         // 除8是因为我们要节约内存。1byte有8位
         int len = size / 8;
-        if (len == 0) {
-            size = 8;
-            len = 1;
-        }
+        len = len == 0 ? 1 : len;
+        size = len * 8;
         filter = new byte[len];
     }
 
@@ -38,7 +36,6 @@ public class BloomFilter {
         int hash = hash(key);
         int bytePos = hash / 8;
         int bitPos = hash % 8;
-
         return (filter[bytePos] >> bitPos & 1) == 1;
     }
 

@@ -3,6 +3,7 @@ package com.zmm.kv.lsm;
 import com.google.protobuf.ByteString;
 import com.zmm.kv.api.DBIterator;
 import com.zmm.kv.pb.Entry;
+import com.zmm.kv.util.Utils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -37,7 +38,7 @@ public class SkipList extends MemTable{
     private boolean put(Entry entry, int type) {
         byte[] key = entry.getKey().toByteArray();
         // 计算score
-        float score = calcScore(key);
+        float score = Utils.calcScore(key);
         // 前继节点
         Node[] preNode = new Node[level];
         // 找插入的位置
@@ -76,7 +77,7 @@ public class SkipList extends MemTable{
         }
 
         // 如果是删除
-        if (type == 1) return false;
+        if (type == 1) return true;
 
         // 构建新节点
         Node newNode = new Node(entry, score);
@@ -103,7 +104,7 @@ public class SkipList extends MemTable{
 
     @Override
     public byte[] get(byte[] key) {
-        float score = calcScore(key);
+        float score = Utils.calcScore(key);
         List<Node> levels = header.levels;
         for (int i = level - 1; i >= 0; i--) {
             Node next = levels.get(i);
@@ -161,21 +162,6 @@ public class SkipList extends MemTable{
             level++;
         }
         return level;
-    }
-
-    /**
-     * 将key的前8个字节散列，方便比较
-     * @param key           key
-     * @return              key前8个字节散列后的hash
-     */
-    private float calcScore(byte[] key) {
-        int l = Math.min(key.length, 8);
-        long hash = 0;
-        for (int i = 0 ; i < l; i++) {
-            int j = 64 - 8 - i * 8;
-            hash |= key[i] << j;
-        }
-        return hash;
     }
 
     /**

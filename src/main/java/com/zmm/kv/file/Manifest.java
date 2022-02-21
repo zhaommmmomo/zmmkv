@@ -1,19 +1,17 @@
 package com.zmm.kv.file;
 
+import com.google.protobuf.ByteString;
 import com.google.protobuf.ProtocolStringList;
 import com.zmm.kv.lsm.BloomFilter;
-import com.zmm.kv.pb.Index;
-import com.zmm.kv.pb.Level;
-import com.zmm.kv.pb.Levels;
+import com.zmm.kv.pb.*;
+import com.zmm.kv.util.Utils;
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.RandomAccessFile;
+import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -50,8 +48,112 @@ public class Manifest {
             // 加载manifest中的内容
             read();
             // 验证manifest
-            check();
+            checkManifest();
         }
+    }
+
+    public byte[] get(byte[] key) {
+        // 从l0 -> l5遍历sst，如果找到了就直接返回
+
+        // 计算key的score
+        float score = Utils.calcScore(key);
+
+        List<Object> index;
+        FileChannel fc;
+        File file;
+        for (int i = 0; i < 6; i++) {
+            // 从右向左遍历，因为最新的sst总是在右边添加
+            for (int j = levels[i].size() - 1; j >= 0; j--) {
+                file = levels[i].get(j);
+                index = fileIndexMap.get(levels[i].get(j));
+                BloomFilter bf = (BloomFilter) index.get(0);
+                float minKey = (float) index.get(1);
+                float maxKey = (float) index.get(2);
+
+                if (minKey <= score && maxKey >= score && bf.containKey(key)) {
+                    // 如果key在该sst的index匹配成功
+                    // 获取dataSize
+                    int size = (int) index.get(3);
+                    // 获取block的个数
+                    int blockCount = size / 4096;
+                    try {
+                        fc = new RandomAccessFile(file, "rw").getChannel();
+
+                        Block mBlock;
+                        int l = 0;
+                        int r = blockCount - 1;
+                        int mid = 0;
+                        float midScore;
+                        byte[] midKey;
+                        out: while (l < r) {
+                            mid = l + (r - l + 1) / 2;
+                            mBlock = SSTable.readBlock(fc, mid * 4096);
+                            midKey = mBlock.getBaseKey().toByteArray();
+                            midScore = Utils.calcScore(midKey);
+                            if (score == midScore) {
+                                if (Utils.compare(key, midKey) != -1) {
+                                    do {
+                                        // 说明key可能在这个block中
+                                        List<Entry> entries = mBlock.getEntryList();
+                                        for (Entry entry : entries) {
+                                            int compare = Utils.compare(key, entry.getKey().toByteArray());
+                                            if (compare == 0) {
+                                                // 找到了，直接返回
+                                                return entry.getValue().toByteArray();
+                                            } else if (compare == -1) {
+                                                // 需要查找的key比这个key小，说明这个sst中不存在
+                                                break out;
+                                            }
+                                        }
+                                        // 如果没在的话，就说明可能存在多个连续的baseKey的前缀相同的block
+                                        mid++;
+                                        if (mid == blockCount) {
+                                            // 如果遍历到这个sst的最后一个block了都还没找到就退出
+                                            break out;
+                                        }
+                                        mBlock = SSTable.readBlock(fc, mid * 4096);
+                                    } while (true);
+                                }
+                                r = mid - 1;
+                            } else if (score > midScore) {
+                                l = mid;
+                            } else {
+                                r = mid - 1;
+                            }
+                        }
+
+                        // 判断这个block是否有效
+                        if (r >= 0 && r < blockCount) {
+                            mBlock = SSTable.readBlock(fc, r * 4096);
+                            midKey = mBlock.getBaseKey().toByteArray();
+                            if (Utils.compare(key, midKey) != -1) {
+                                // 可能在这个block
+                                for (Entry entry : mBlock.getEntryList()) {
+                                    int compare = Utils.compare(key, entry.getKey().toByteArray());
+                                    if (compare == 0) {
+                                        // 找到了，直接返回
+                                        return entry.getValue().toByteArray();
+                                    } else if (compare == -1) {
+                                        // 需要查找的key比这个key小，说明这个sst中不存在
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+                        // 如果在这个sst中还是没找到
+                        // L0层：继续遍历
+                        // Ln层：下一层开始遍历
+                        if (i > 0) {
+                            break;
+                        }
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+            }
+        }
+        return null;
     }
 
     public boolean changeLevels(SSTable ssTable) {
@@ -120,7 +222,7 @@ public class Manifest {
         return false;
     }
 
-    private void check() {
+    private void checkManifest() {
         File[] files = new File(dir).listFiles();
         for (File file : files) {
             if (file.getName().endsWith(".sst")) {
@@ -138,25 +240,36 @@ public class Manifest {
     private void loadSSTIndex(File file) {
         try {
             FileChannel fc = new RandomAccessFile(file, "rw").getChannel();
-            // 读取header中的indexLen
-            ByteBuffer buf = ByteBuffer.allocate(3);
+            // 读取header
+            ByteBuffer buf = ByteBuffer.allocate(8);
+
             int size = (int) fc.size();
-            fc.read(buf, size - 5);
+            fc.read(buf, size - 8);
             byte[] bytes = buf.array();
-            int indexLen = ((bytes[0] + 128) << 16) +
-                           ((bytes[1] + 128) << 8) +
-                           (bytes[2] + 128);
+            int dataSize = ((bytes[0] + 128) << 24) +
+                            ((bytes[1] + 128) << 16) +
+                            ((bytes[2] + 128) << 8) +
+                            (bytes[3] + 128);
+            int indexLen = ((bytes[4] + 128) << 16) +
+                            ((bytes[5] + 128) << 8) +
+                            (bytes[6] + 128);
+
             // 获取Index
             buf = ByteBuffer.allocate(indexLen);
-            fc.read(buf, size - indexLen - 9);
+            fc.read(buf, dataSize);
             Index index = Index.parseFrom(buf.array());
-            List<Object> list = new ArrayList<>();
+            List<Object> list = new ArrayList<>(4);
             list.add(new BloomFilter(index.getBloomFilter().toByteArray()));
             list.add(index.getMinKey());
             list.add(index.getMaxKey());
+            list.add(dataSize);
             fileIndexMap.put(file, list);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    private void checkSST() {
+
     }
 }

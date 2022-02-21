@@ -10,8 +10,8 @@ message Index {
    * 可以用来与bloom一起判断key是否存在
    * 或者在merge时合并区间
    */
-  bytes minKey = 2;
-  bytes maxKey = 3;
+  float minKey = 2;
+  float maxKey = 3;
 }
 
 message Block {
