@@ -1,14 +1,10 @@
 package com.zmm.kv.worker;
 
-import com.zmm.kv.api.DBIterator;
 import com.zmm.kv.api.Option;
 import com.zmm.kv.file.SSTable;
-import com.zmm.kv.file.Wal;
 import com.zmm.kv.lsm.LevelManager;
 import com.zmm.kv.lsm.MemTable;
-import com.zmm.kv.pb.Entry;
 
-import java.nio.MappedByteBuffer;
 import java.util.List;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;

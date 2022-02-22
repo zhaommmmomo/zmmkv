@@ -8,6 +8,7 @@ public interface DB {
     boolean put(byte[] key, byte[] value);
     byte[] get(byte[] key);
     boolean del(byte[] del);
+    Range range(byte[] startKey, byte[] endKey);
     DBIterator iterator();
     void close();
 }

@@ -11,7 +11,7 @@ import com.zmm.kv.pb.Entry;
 public class DBImpl implements DB{
 
     private final LSM lsm;
-    private Option option;
+    private final Option option;
 
     public DBImpl() {
         option = new Option();
@@ -23,8 +23,7 @@ public class DBImpl implements DB{
         lsm = new LSM(option);
     }
 
-
-
+    @Override
     public boolean put(byte[] key, byte[] value) {
         return lsm.put(Entry.newBuilder()
                             .setKey(ByteString.copyFrom(key))
@@ -32,18 +31,28 @@ public class DBImpl implements DB{
                             .build());
     }
 
+    @Override
     public byte[] get(byte[] key) {
         return lsm.get(key);
     }
 
+    @Override
     public boolean del(byte[] key) {
         return lsm.del(key);
     }
 
+    @Override
+    public Range range(byte[] startKey, byte[] endKey) {
+
+        return null;
+    }
+
+    @Override
     public DBIterator iterator() {
         return lsm.iterator();
     }
 
+    @Override
     public void close() {
 
     }

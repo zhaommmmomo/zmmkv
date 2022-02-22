@@ -3,6 +3,7 @@ package com.zmm.kv.lsm;
 import com.google.protobuf.ByteString;
 import com.zmm.kv.api.DBIterator;
 import com.zmm.kv.api.Option;
+import com.zmm.kv.api.Range;
 import com.zmm.kv.file.Wal;
 import com.zmm.kv.pb.Entry;
 import com.zmm.kv.worker.Flusher;
@@ -32,6 +33,8 @@ public class LSM {
     private LevelManager levelManager;
     private Wal wal;
 
+    private GlobalIndex globalIndex;
+
     private final Flusher flusher;
 
     public LSM(Option option) {
@@ -49,12 +52,14 @@ public class LSM {
         File file = new File(option.getDir());
         List<File> wals = new ArrayList<>();
         if (file.exists()) {
-            // 加载wal文件
+            // 加载文件
             String name;
             for (File f : Objects.requireNonNull(file.listFiles())) {
                 name = f.getName();
                 if (name.endsWith("wal")) {
                     wals.add(f);
+                } else if ("MANIFEST".equals(name)) {
+                    levelManager.loadManifest();
                 }
             }
         }
@@ -160,7 +165,7 @@ public class LSM {
                 if (res != null) return res;
             }
 
-            // TODO: 2022/2/18 不可变内存表中如果没查询到，去磁盘查
+            // 不可变内存表中如果没查询到，去磁盘查
             res = levelManager.get(key);
         }
         return res;
@@ -171,6 +176,12 @@ public class LSM {
         wal.append(key);
 
         return menTable.del(key);
+    }
+
+    public Range range(byte[] startKey, byte[] endKey) {
+        
+
+        return null;
     }
 
     public DBIterator iterator() {

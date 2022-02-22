@@ -20,13 +20,11 @@ public class LevelManager {
     public LevelManager(Option option) {
         this.option = option;
         cache = new Cache();
-        manifest = new Manifest();
-        init();
+        manifest = new Manifest(option);
     }
 
-    private void init() {
-
-        manifest.loadManifest(option.getDir());
+    public void loadManifest() {
+        manifest.loadManifest();
     }
 
     public byte[] get(byte[] key) {
@@ -43,8 +41,11 @@ public class LevelManager {
         throw new RuntimeException("[flush] changeLevels fail!");
     }
 
-    public boolean changeLevels(SSTable ssTable, List<File> files) {
-        if (manifest.changeLevels(ssTable, files)) return true;
+    public boolean changeLevels(List<SSTable> newSSTables,
+                                File oldSSt,
+                                List<File> mergeFiles,
+                                int level) {
+        if (manifest.changeLevels(newSSTables, oldSSt, mergeFiles, level)) return true;
         throw new RuntimeException("[merge] changeLevels fail!");
     }
 }

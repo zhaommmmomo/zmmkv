@@ -7,7 +7,7 @@ import com.zmm.kv.pb.Entry;
  * @author zmm
  * @date 2022/2/17 19:21
  */
-public abstract class MemTable {
+public abstract class MemTable extends Table {
 
     public boolean put(Entry entry) {
         return false;

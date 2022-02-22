@@ -1,17 +1,17 @@
 package com.zmm.kv.file;
 
-import com.google.protobuf.ByteString;
 import com.google.protobuf.ProtocolStringList;
+import com.zmm.kv.api.Option;
 import com.zmm.kv.lsm.BloomFilter;
 import com.zmm.kv.pb.*;
 import com.zmm.kv.util.Utils;
+import com.zmm.kv.worker.Merger;
 
 import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -29,27 +29,27 @@ public class Manifest {
     private final Map<File, Integer> fileLevelMap;
     private final Map<File, List<Object>> fileIndexMap;
     private int count = 0;
-
     private String dir;
+    private Merger merger;
 
-    public Manifest() {
+    public Manifest(Option option) {
         levels = new CopyOnWriteArrayList[6];
         for (int i = 0; i < 6; i++) {
             levels[i] = new CopyOnWriteArrayList<>();
         }
         fileLevelMap = new ConcurrentHashMap<>();
         fileIndexMap = new ConcurrentHashMap<>();
+        merger = new Merger(this, option);
+        this.dir = option.getDir();
     }
 
-    public void loadManifest(String dir) {
+    public void loadManifest() {
         this.manifest = new File(dir + "\\MANIFEST");
         this.dir = dir;
-        if (manifest.exists()) {
-            // 加载manifest中的内容
-            read();
-            // 验证manifest
-            checkManifest();
-        }
+        // 加载manifest中的内容
+        read();
+        // 验证manifest
+        checkManifest();
     }
 
     public byte[] get(byte[] key) {
@@ -158,26 +158,61 @@ public class Manifest {
 
     public boolean changeLevels(SSTable ssTable) {
         boolean flag = true;
-        levels[ssTable.level()].add(
-                new File(dir + "\\" + ssTable.getFileName()));
+        File sst = new File(dir + "\\" + ssTable.getFileName());
+        levels[0].add(sst);
+        putSSTIndex(ssTable, sst);
+
         count++;
         // 如果flush了3个sst，触发写write();
         if (count % 3 == 0 && (flag = write())) {
             // 删除最前面的3个wal文件
             Wal.delPreWal(dir, 3);
         }
+
+        // 判断是否需要触发merge
+        if (levels[0].size() > 20) {
+            merger.merge(0);
+        }
         return flag;
     }
 
-    public boolean changeLevels(SSTable ssTable, List<File> files) {
+    public boolean changeLevels(List<SSTable> newSSTables,
+                                File oldSSt,
+                                List<File> mergeFiles,
+                                int level) {
         // merge操作直接触发write()。
-        levels[ssTable.level()].add(
-                new File(dir + "\\" + ssTable.getFileName()));
-        for (File file : files) {
-            levels[fileLevelMap.get(file)].remove(file);
+        int l = level + 1;
+        File sst;
+        for (SSTable ssTable : newSSTables) {
+            sst = new File(dir + "\\" + ssTable.getFileName());
+            levels[l].add(sst);
+            putSSTIndex(ssTable, sst);
+        }
+
+        levels[level].remove(oldSSt);
+        fileLevelMap.remove(oldSSt);
+        fileIndexMap.remove(oldSSt);
+
+        for (File file : mergeFiles) {
+            levels[l].remove(file);
             fileLevelMap.remove(file);
+            fileIndexMap.remove(file);
+        }
+
+        if (l < 5 && levels[l].size() > 20) {
+            merger.merge(l);
         }
         return write();
+    }
+
+    private void putSSTIndex(SSTable ssTable, File sst) {
+        List<Object> list = new ArrayList<>(5);
+        list.add(ssTable.bloomFilter());
+        list.add(ssTable.minKeyScore);
+        list.add(ssTable.maxKeyScore);
+        list.add(ssTable.dataSize());
+        list.add(ssTable.size());
+        fileIndexMap.put(sst, list);
     }
 
     /**
@@ -187,14 +222,17 @@ public class Manifest {
         try {
             List<Level> levels = Levels.parseFrom(
                     Files.readAllBytes(manifest.toPath())).getLevelsList();
+            String fileName = "0.sst";
             for (int i = 0; i < 6; i++) {
                 ProtocolStringList level = levels.get(i).getLevelList();
                 for (String filePath : level) {
                     File file = new File(filePath);
                     fileLevelMap.put(file, i);
                     this.levels[i].add(file);
+                    fileName = file.getName();
                 }
             }
+            SSTable.setFileNum(Integer.parseInt(fileName.substring(0, fileName.indexOf('.'))));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -258,18 +296,23 @@ public class Manifest {
             buf = ByteBuffer.allocate(indexLen);
             fc.read(buf, dataSize);
             Index index = Index.parseFrom(buf.array());
-            List<Object> list = new ArrayList<>(4);
+            List<Object> list = new ArrayList<>(5);
             list.add(new BloomFilter(index.getBloomFilter().toByteArray()));
             list.add(index.getMinKey());
             list.add(index.getMaxKey());
             list.add(dataSize);
+            list.add(dataSize + indexLen + 8);
             fileIndexMap.put(file, list);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
 
-    private void checkSST() {
+    public List<File>[] getLevels() {
+        return levels;
+    }
 
+    public Map<File, List<Object>> getFileIndexMap() {
+        return fileIndexMap;
     }
 }
