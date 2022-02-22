@@ -40,6 +40,11 @@ public class SSTable extends Table {
         this.setFid();
     }
 
+    public SSTable(int level) {
+        this.setFid();
+        this.level = level;
+    }
+
     /**
      * 通过memTable创建的sst
      * @param memTable          内存表
@@ -152,7 +157,7 @@ public class SSTable extends Table {
                                       int level,
                                       Option option) {
         List<SSTable> res = new ArrayList<>();
-        SSTable ssTable = new SSTable();
+        SSTable ssTable = new SSTable(level);
         // 写新sst的fc
         FileChannel fc;
         ssTable.bloomFilter = new BloomFilter(10000000, 0.01f);
@@ -218,12 +223,12 @@ public class SSTable extends Table {
                             newSSTSize += 4096;
 
                             // 如果新sst文件大小超过阈值
-                            if (newSSTSize > 100) {
+                            if (newSSTSize > option.getSstSize(level)) {
 
                                 doBuildSSTable(ssTable, fc, newSSTSize, startKey, endKey, builder);
 
                                 res.add(ssTable);
-                                ssTable = new SSTable();
+                                ssTable = new SSTable(level);
                                 newSSTSize = 0;
                                 ssTable.bloomFilter = new BloomFilter(10000000, 0.01f);
                             }
@@ -279,12 +284,12 @@ public class SSTable extends Table {
                         newSSTSize += 4096;
 
                         // 如果新sst文件大小超过阈值
-                        if (newSSTSize > 100) {
+                        if (newSSTSize > option.getSstSize(level)) {
 
                             doBuildSSTable(ssTable, fc, newSSTSize, startKey, endKey, builder);
 
                             res.add(ssTable);
-                            ssTable = new SSTable();
+                            ssTable = new SSTable(level);
                             newSSTSize = 0;
                             ssTable.bloomFilter = new BloomFilter(10000000, 0.01f);
                         }

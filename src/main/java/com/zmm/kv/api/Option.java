@@ -16,15 +16,15 @@ package com.zmm.kv.api;
  */
 public class Option {
 
-    private final int memSize = 1024 * 1024 * 12;
+    private final int memSize = 1024 * 10;
     private String dir;
     private final int blockSize = 1024 * 4;
-    private final int[] sstSize = new int[]{1024 * 1024 * 16,
-                                            1024 * 1024 * 40,
-                                            1024 * 1024 * 100,
-                                            1024 * 1024 * 300,
-                                            1024 * 1024 * 600,
-                                            1024 * 1024 * 1024};
+    private final int[] sstSize = new int[]{1024 * 16,
+                                            1024 * 50,
+                                            1024 * 100,
+                                            1024 * 300,
+                                            1024 * 600,
+                                            1024 * 1024};
     private final int valueSize = blockSize;
 
     public Option() {

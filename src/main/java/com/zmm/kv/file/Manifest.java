@@ -39,17 +39,20 @@ public class Manifest {
         }
         fileLevelMap = new ConcurrentHashMap<>();
         fileIndexMap = new ConcurrentHashMap<>();
-        merger = new Merger(this, option);
         this.dir = option.getDir();
+        this.manifest = new File(dir + "\\MANIFEST");
+        merger = new Merger(this, option);
     }
 
     public void loadManifest() {
         this.manifest = new File(dir + "\\MANIFEST");
-        this.dir = dir;
+
         // 加载manifest中的内容
         read();
         // 验证manifest
         checkManifest();
+
+
     }
 
     public byte[] get(byte[] key) {
@@ -170,7 +173,7 @@ public class Manifest {
         }
 
         // 判断是否需要触发merge
-        if (levels[0].size() > 20) {
+        if (levels[0].size() > 3) {
             merger.merge(0);
         }
         return flag;
@@ -192,14 +195,16 @@ public class Manifest {
         levels[level].remove(oldSSt);
         fileLevelMap.remove(oldSSt);
         fileIndexMap.remove(oldSSt);
+        oldSSt.delete();
 
         for (File file : mergeFiles) {
             levels[l].remove(file);
             fileLevelMap.remove(file);
             fileIndexMap.remove(file);
+            file.delete();
         }
 
-        if (l < 5 && levels[l].size() > 20) {
+        if (l < 5 && levels[l].size() > 3) {
             merger.merge(l);
         }
         return write();

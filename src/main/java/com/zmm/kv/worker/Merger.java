@@ -74,6 +74,9 @@ public class Merger implements Runnable{
 
     private void merge0() {
         // 遍历l0层的所有sst，将相同区间的压缩合并到下一层
+        List<File>[] levels = manifest.getLevels();
+        Map<File, List<Object>> fileIndexMap = manifest.getFileIndexMap();
+
     }
 
     private void mergeN(int level) {
