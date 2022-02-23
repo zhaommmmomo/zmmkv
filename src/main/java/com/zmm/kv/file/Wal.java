@@ -80,7 +80,8 @@ public class Wal {
 
     public static void delPreWal(String dir, int count) {
         while (count > 0) {
-            new File(dir + "\\" + (++preNum) + ".wal").delete();
+            File file = new File(dir + "\\" + (++preNum) + ".wal");
+            System.out.println("del: " + file.getName() + " " + file.delete());
             count--;
         }
     }

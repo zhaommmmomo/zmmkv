@@ -99,9 +99,6 @@ public class SkipList extends MemTable{
         }
         length++;
         size += entry.toByteArray().length;
-
-
-
         return true;
     }
 

@@ -54,6 +54,7 @@ public class LSM {
         if (file.exists()) {
             // 加载文件
             String name;
+
             for (File f : Objects.requireNonNull(file.listFiles())) {
                 name = f.getName();
                 if (name.endsWith("wal")) {

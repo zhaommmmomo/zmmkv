@@ -2,6 +2,7 @@ package com.zmm.kv.worker;
 
 import com.zmm.kv.api.Option;
 import com.zmm.kv.file.SSTable;
+import com.zmm.kv.file.Wal;
 import com.zmm.kv.lsm.LevelManager;
 import com.zmm.kv.lsm.MemTable;
 

@@ -11,11 +11,10 @@ import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
 
 /**
  * 存储磁盘中的level层级、索引信息
@@ -51,8 +50,6 @@ public class Manifest {
         read();
         // 验证manifest
         checkManifest();
-
-
     }
 
     public byte[] get(byte[] key) {
@@ -144,12 +141,12 @@ public class Manifest {
                             }
                         }
 
-                        // 如果在这个sst中还是没找到
-                        // L0层：继续遍历
-                        // Ln层：下一层开始遍历
-                        if (i > 0) {
-                            break;
-                        }
+                        //// 如果在这个sst中还是没找到
+                        //// L0层：继续遍历
+                        //// Ln层：下一层开始遍历
+                        //if (i > 0) {
+                        //    break;
+                        //}
                     } catch (IOException e) {
                         throw new RuntimeException(e);
                     }
@@ -164,11 +161,13 @@ public class Manifest {
         File sst = new File(dir + "\\" + ssTable.getFileName());
         levels[0].add(sst);
         putSSTIndex(ssTable, sst);
+        fileLevelMap.put(sst, 0);
 
         count++;
         // 如果flush了3个sst，触发写write();
-        if (count % 3 == 0 && (flag = write())) {
-            // 删除最前面的3个wal文件
+        if (count % 3 == 0 ) {
+            flag = write();
+
             Wal.delPreWal(dir, 3);
         }
 
@@ -177,6 +176,30 @@ public class Manifest {
             merger.merge(0);
         }
         return flag;
+    }
+
+    public boolean changeLevels(List<SSTable> newSSTables,
+                                List<File> oldFiles) {
+        // merge操作直接触发write()。
+        File sst;
+        for (SSTable ssTable : newSSTables) {
+            sst = new File(dir + "\\" + ssTable.getFileName());
+            levels[1].add(sst);
+            putSSTIndex(ssTable, sst);
+            fileLevelMap.put(sst, 1);
+        }
+
+        for (File file : oldFiles) {
+            levels[0].remove(file);
+            fileLevelMap.remove(file);
+            fileIndexMap.remove(file);
+            file.delete();
+        }
+
+        if (levels[1].size() > 3) {
+            merger.merge(1);
+        }
+        return write();
     }
 
     public boolean changeLevels(List<SSTable> newSSTables,
@@ -190,6 +213,7 @@ public class Manifest {
             sst = new File(dir + "\\" + ssTable.getFileName());
             levels[l].add(sst);
             putSSTIndex(ssTable, sst);
+            fileLevelMap.put(sst, l);
         }
 
         levels[level].remove(oldSSt);
@@ -267,22 +291,39 @@ public class Manifest {
 
     private void checkManifest() {
         File[] files = new File(dir).listFiles();
+        Set<File> set = new HashSet<>();
         for (File file : files) {
             if (file.getName().endsWith(".sst")) {
                 // 判断manifest中是否包含了该sst
                 if (fileLevelMap.containsKey(file)) {
                     // 读取sst，获取index段
                     loadSSTIndex(file);
+                    set.add(file);
                 } else {
                     file.delete();
                 }
             }
         }
+        Set<File> fileSet = fileLevelMap.keySet();
+        boolean flag = false;
+        for (File file : fileSet) {
+            if (!set.contains(file)) {
+                int level = fileLevelMap.get(file);
+                levels[level].remove(file);
+                fileIndexMap.remove(file);
+                fileLevelMap.remove(file);
+                flag = true;
+            }
+        }
+        if (flag) {
+            write();
+        }
     }
 
     private void loadSSTIndex(File file) {
+        FileChannel fc = null;
         try {
-            FileChannel fc = new RandomAccessFile(file, "rw").getChannel();
+            fc = new RandomAccessFile(file, "rw").getChannel();
             // 读取header
             ByteBuffer buf = ByteBuffer.allocate(8);
 
@@ -310,6 +351,14 @@ public class Manifest {
             fileIndexMap.put(file, list);
         } catch (IOException e) {
             throw new RuntimeException(e);
+        } finally {
+            try {
+                if (fc != null) {
+                    fc.close();
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
     }
 

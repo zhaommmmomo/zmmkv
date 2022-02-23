@@ -5,15 +5,19 @@ import com.zmm.kv.api.DBIterator;
 import com.zmm.kv.api.Option;
 import com.zmm.kv.lsm.BloomFilter;
 import com.zmm.kv.lsm.MemTable;
+import com.zmm.kv.lsm.SkipList;
 import com.zmm.kv.lsm.Table;
 import com.zmm.kv.pb.Block;
 import com.zmm.kv.pb.Entry;
 import com.zmm.kv.pb.Index;
 import com.zmm.kv.util.Utils;
+import sun.nio.ch.FileChannelImpl;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
@@ -55,12 +59,11 @@ public class SSTable extends Table {
 
         int mLen = memTable.len();
         if (mLen == 0) return null;
-
+        FileChannel fc = null;
+        SSTable ssTable = new SSTable();
         try {
-            SSTable ssTable = new SSTable();
-
-            MappedByteBuffer mb = new RandomAccessFile(new File(option.getDir() + "\\" + ssTable.getFileName()), "rw").getChannel()
-                    .map(FileChannel.MapMode.READ_WRITE, 0, option.getSstSize(0));
+            fc = newFileChannel(null, ssTable, option);
+            MappedByteBuffer mb = fc.map(FileChannel.MapMode.READ_WRITE, 0, option.getSstSize(0));
 
             // build
             DBIterator iterator = memTable.iterator();
@@ -122,6 +125,7 @@ public class SSTable extends Table {
                                 .setMaxKey(ssTable.maxKeyScore)
                                 .setMinKey(ssTable.minKeyScore)
                                 .build().toByteArray();
+
             mb.put(indexs);
 
             // 填充
@@ -135,10 +139,101 @@ public class SSTable extends Table {
             mb.put(buildHeader(ssTable.dataSize, indexs.length));
             ssTable.size = count + indexs.length + 8;
 
-            return ssTable;
+            // 关闭MMap
+            closeMMap(mb);
+
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        } finally {
+            try {
+                if (fc != null) {
+                    fc.close();
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        return ssTable;
+    }
+
+    public static List<SSTable> build(List<File> mergeFiles, List<Integer> dataSizes, Option option) {
+        List<SSTable> res = new ArrayList<>();
+        MemTable memTable = new SkipList();
+        FileChannel fc = null;
+        int dataSize;
+        try {
+            for (int i = 0; i < mergeFiles.size(); i++) {
+                fc = newFileChannel(fc, mergeFiles.get(i));
+                dataSize = dataSizes.get(i);
+                int size = 0;
+                Block block;
+                while (size < dataSize) {
+                    block = readBlock(fc, size);
+                    List<Entry> entries = block.getEntryList();
+                    for (Entry entry : entries) {
+                        memTable.put(entry);
+                    }
+                    size += 4096;
+                }
+            }
+            DBIterator iterator = memTable.iterator();
+            SSTable ssTable = new SSTable(1);
+            ssTable.bloomFilter = new BloomFilter(memTable.len(), 0.01f);
+            fc = newFileChannel(fc, ssTable, option);
+            Block.Builder builder = Block.newBuilder();
+            byte[] minKey = null;
+            byte[] maxKey = null;
+            int size = 0;
+            while (iterator.hasNext()) {
+                Entry entry = iterator.next();
+
+                if (builder.build().getSerializedSize() + entry.getSerializedSize() > 4094) {
+                    fill(builder, fc);
+                    builder = Block.newBuilder();
+                    size += 4096;
+
+                    if (size > option.getSstSize(1)) {
+                        // 构建新的sst
+                        doBuildSSTable(ssTable, fc, size, minKey, maxKey);
+
+                        res.add(ssTable);
+                        ssTable = new SSTable(1);
+                        size = 0;
+                        ssTable.bloomFilter = new BloomFilter(memTable.len(), 0.01f);
+                        fc = newFileChannel(fc, ssTable, option);
+                    }
+                }
+
+                maxKey = entry.getKey().toByteArray();
+                if (minKey == null) minKey = maxKey;
+
+                ssTable.bloomFilter.appendKey(maxKey);
+
+                if (builder.getBaseKey().size() == 0) {
+                    builder.setBaseKey(ByteString.copyFrom(maxKey));
+                }
+
+                builder.addEntry(entry);
+            }
+
+            if (builder.getBaseKey().size() != 0) {
+                fill(builder, fc);
+                size += 4096;
+                doBuildSSTable(ssTable, fc, size, minKey, maxKey);
+                res.add(ssTable);
+            }
         } catch (IOException e) {
             throw new RuntimeException(e);
+        } finally {
+            try {
+                if (fc != null) {
+                    fc.close();
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
+        return res;
     }
 
     /**
@@ -159,20 +254,20 @@ public class SSTable extends Table {
         List<SSTable> res = new ArrayList<>();
         SSTable ssTable = new SSTable(level);
         // 写新sst的fc
-        FileChannel fc;
+        FileChannel fc = null;
         ssTable.bloomFilter = new BloomFilter(10000000, 0.01f);
         int newSSTSize = 0;
         byte[] startKey = null;
         byte[] endKey = null;
 
         // 读旧sst的fc
-        FileChannel fc1;
-        FileChannel fc2;
+        FileChannel fc1 = null;
+        FileChannel fc2 = null;
         int size1 = 0;
         int size2 = 0;
         try {
-            fc = new RandomAccessFile(new File(option.getDir() + "\\" + ssTable.getFileName()), "rw").getChannel();
-            fc1 = new RandomAccessFile(mergeFile, "rw").getChannel();
+            fc = newFileChannel(fc, ssTable, option);
+            fc1 = newFileChannel(fc1, mergeFile);
             // n层的sst的block
             Block block1;
             // n + 1层的sst的block
@@ -184,9 +279,7 @@ public class SSTable extends Table {
             List<Entry> entries2;
             for (int k = 0; k < mergeFiles.size(); k++) {
 
-                File nextMergeFile = mergeFiles.get(k);
-
-                fc2 = new RandomAccessFile(nextMergeFile, "rw").getChannel();
+                fc2 = newFileChannel(fc2, mergeFiles.get(k));
 
                 int i = 0;
                 int j = 0;
@@ -214,9 +307,6 @@ public class SSTable extends Table {
                             i++;
                         }
 
-                        endKey = entry.getKey().toByteArray();
-                        if (startKey == null) startKey = endKey;
-
                         if (builder.build().getSerializedSize() + entry.getSerializedSize() > 4094) {
                             fill(builder, fc);
                             builder = Block.newBuilder();
@@ -225,14 +315,18 @@ public class SSTable extends Table {
                             // 如果新sst文件大小超过阈值
                             if (newSSTSize > option.getSstSize(level)) {
 
-                                doBuildSSTable(ssTable, fc, newSSTSize, startKey, endKey, builder);
+                                doBuildSSTable(ssTable, fc, newSSTSize, startKey, endKey);
 
                                 res.add(ssTable);
                                 ssTable = new SSTable(level);
                                 newSSTSize = 0;
                                 ssTable.bloomFilter = new BloomFilter(10000000, 0.01f);
+                                fc = newFileChannel(fc, ssTable, option);
                             }
                         }
+
+                        endKey = entry.getKey().toByteArray();
+                        if (startKey == null) startKey = endKey;
 
                         ssTable.bloomFilter.appendKey(endKey);
 
@@ -253,7 +347,10 @@ public class SSTable extends Table {
                     if (size1 == dataSize && size2 == dataSizes.get(k)) {
                         // 如果第n层的sst与n + 1层的sst同时读完，说明都读完了。
                         if (builder.getBaseKey().size() != 0) {
-                            doBuildSSTable(ssTable, fc, newSSTSize, startKey, endKey, builder);
+                            fill(builder, fc);
+                            newSSTSize += 4096;
+                            doBuildSSTable(ssTable, fc, newSSTSize, startKey, endKey);
+                            res.add(ssTable);
                         }
                         return res;
                     } else if (size1 == dataSize) {
@@ -275,9 +372,6 @@ public class SSTable extends Table {
                 entries1 = block1.getEntryList();
                 for (Entry entry : entries1) {
 
-                    endKey = entry.getKey().toByteArray();
-                    if (startKey == null) startKey = endKey;
-
                     if (builder.build().getSerializedSize() + entry.getSerializedSize() > 4094) {
                         fill(builder, fc);
                         builder = Block.newBuilder();
@@ -286,14 +380,18 @@ public class SSTable extends Table {
                         // 如果新sst文件大小超过阈值
                         if (newSSTSize > option.getSstSize(level)) {
 
-                            doBuildSSTable(ssTable, fc, newSSTSize, startKey, endKey, builder);
+                            doBuildSSTable(ssTable, fc, newSSTSize, startKey, endKey);
 
                             res.add(ssTable);
                             ssTable = new SSTable(level);
                             newSSTSize = 0;
                             ssTable.bloomFilter = new BloomFilter(10000000, 0.01f);
+                            fc = newFileChannel(fc, ssTable, option);
                         }
                     }
+
+                    endKey = entry.getKey().toByteArray();
+                    if (startKey == null) startKey = endKey;
 
                     ssTable.bloomFilter.appendKey(endKey);
 
@@ -308,19 +406,33 @@ public class SSTable extends Table {
             }
 
             if (builder.getBaseKey().size() != 0) {
-                doBuildSSTable(ssTable, fc, newSSTSize, startKey, endKey, builder);
+                fill(builder, fc);
+                newSSTSize += 4096;
+                doBuildSSTable(ssTable, fc, newSSTSize, startKey, endKey);
                 res.add(ssTable);
             }
         } catch (IOException e) {
             throw new RuntimeException(e);
+        } finally {
+            try {
+                if (fc != null) {
+                    fc.close();
+                }
+                if (fc1 != null) {
+                    fc1.close();
+                }
+                if (fc2 != null) {
+                    fc2.close();
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
 
         return res;
     }
 
-    private static void doBuildSSTable(SSTable ssTable, FileChannel fc, int newSSTSize, byte[] startKey, byte[] endKey, Block.Builder builder) throws IOException {
-        fill(builder, fc);
-        newSSTSize += 4096;
+    private static void doBuildSSTable(SSTable ssTable, FileChannel fc, int newSSTSize, byte[] startKey, byte[] endKey) throws IOException {
         ssTable.minKeyScore = Utils.calcScore(startKey);
         ssTable.maxKeyScore = Utils.calcScore(endKey);
 
@@ -404,6 +516,20 @@ public class SSTable extends Table {
         }
     }
 
+    private static FileChannel newFileChannel(FileChannel fc, File file) throws IOException {
+        if (fc != null) {
+            fc.close();
+        }
+        return new RandomAccessFile(file, "rw").getChannel();
+    }
+
+    private static FileChannel newFileChannel(FileChannel fc, SSTable ssTable, Option option) throws IOException {
+        if (fc != null) {
+            fc.close();
+        }
+        return new RandomAccessFile(new File(option.getDir() + "\\" + ssTable.getFileName()), "rw").getChannel();
+    }
+
     private void setFid() {
         this.fid = fileNum.incrementAndGet();
     }
@@ -438,5 +564,12 @@ public class SSTable extends Table {
 
     public int dataSize() {
         return dataSize;
+    }
+
+    private static void closeMMap(MappedByteBuffer mb) throws Exception {
+        // 在关闭资源时执行以下代码释放内存
+        Method m = FileChannelImpl.class.getDeclaredMethod("unmap", MappedByteBuffer.class);
+        m.setAccessible(true);
+        m.invoke(FileChannelImpl.class, mb);
     }
 }
